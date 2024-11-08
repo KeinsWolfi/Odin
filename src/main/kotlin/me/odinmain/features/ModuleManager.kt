@@ -7,6 +7,7 @@ import me.odinmain.features.impl.dungeon.dungeonwaypoints.DungeonWaypoints
 import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers
 import me.odinmain.features.impl.floor7.*
 import me.odinmain.features.impl.floor7.p3.*
+import me.odinmain.features.impl.helium.penis
 import me.odinmain.features.impl.nether.*
 import me.odinmain.features.impl.render.*
 import me.odinmain.features.impl.render.ClickGUIModule.hudChat
@@ -67,6 +68,9 @@ object ModuleManager {
         // kuudra
         BuildHelper, FreshTimer, KuudraDisplay, NoPre, PearlWaypoints, RemovePerks, SupplyHelper, TeamHighlight,
         VanqNotifier, KuudraReminders, KuudraRequeue,
+
+        //helium
+        penis
     )
 
     init {

@@ -2,18 +2,14 @@ package me.odinmain.features.impl.dungeon.puzzlesolvers
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import me.odinmain.OdinMain.mc
-import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.showOrder
 import me.odinmain.utils.equal
 import me.odinmain.utils.render.Color
-import me.odinmain.utils.render.RenderUtils.renderVec
 import me.odinmain.utils.render.Renderer
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.getRealCoords
 import me.odinmain.utils.skyblock.dungeon.tiles.Room
 import me.odinmain.utils.skyblock.getBlockAt
 import me.odinmain.utils.skyblock.modMessage
-import me.odinmain.utils.toBlockPos
 import me.odinmain.utils.toVec3
 import net.minecraft.init.Blocks
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
@@ -45,12 +41,11 @@ object WaterSolver {
     }
 
     private fun solve(room: Room) {
-        modMessage("Solving Water Board")
         val extendedSlots = WoolColor.entries.joinToString("") { if (it.isExtended) it.ordinal.toString() else "" }.takeIf { it.length == 3 } ?: return
 
-        val pistonHeadPosition = room.getRealCoords(Vec3(15.0, 82.0, 27.0))
+        val pistonHeadPosition = room.getRealCoords(BlockPos(15, 82, 27))
         val foundBlocks = mutableListOf(false, false, false, false, false)
-        BlockPos.getAllInBox(BlockPos(pistonHeadPosition.xCoord + 1, 78.0, pistonHeadPosition.zCoord + 1), BlockPos(pistonHeadPosition.xCoord - 1, 77.0, pistonHeadPosition.zCoord - 1)).forEach {
+        BlockPos.getAllInBox(BlockPos(pistonHeadPosition.x + 1, 78, pistonHeadPosition.z + 1), BlockPos(pistonHeadPosition.x - 1, 77, pistonHeadPosition.z - 1)).forEach {
             when (getBlockAt(it)) {
                 Blocks.gold_block -> foundBlocks[0] = true
                 Blocks.hardened_clay -> foundBlocks[1] = true
@@ -65,10 +60,10 @@ object WaterSolver {
             foundBlocks[2] && foundBlocks[3] -> 1
             foundBlocks[3] && foundBlocks[4] -> 2
             foundBlocks[0] && foundBlocks[3] -> 3
-            else -> -1
+            else -> return
         }
 
-        modMessage("Variant: $variant:$extendedSlots:${room.rotation.name}")
+        modMessage("variant: $variant, extended: $extendedSlots")
 
         solutions.clear()
         waterSolutions[variant.toString()].asJsonObject[extendedSlots].asJsonObject.entrySet().forEach {
@@ -88,50 +83,33 @@ object WaterSolver {
     }
 
     fun waterRender() {
-        if (DungeonUtils.currentRoomName != "Water Board" || variant == -1) return
+        if (variant == -1 || DungeonUtils.currentRoomName != "Water Board") return
 
         val solutionList = solutions
             .flatMap { (lever, times) -> times.drop(lever.i).map { Pair(lever, it) } }
             .sortedBy { (lever, time) -> time + if (lever == LeverBlock.WATER) 0.01 else 0.0 }
 
-        val sortedSolutions = solutions.flatMap { (lever, times) ->
-            times.drop(lever.i).filter { it != 0.0 }
-        }.sorted()
-
         val firstSolution = solutionList.firstOrNull() ?: return
 
-        if (PuzzleSolvers.showTracer) Renderer.draw3DLine(listOf(mc.thePlayer.renderVec, firstSolution.first.leverPos.addVector(.5, .5, .5)), color = PuzzleSolvers.tracerColorFirst, depth = true)
+        if (PuzzleSolvers.showTracer) Renderer.drawTracer(firstSolution.first.leverPos.addVector(.5, .5, .5), color = PuzzleSolvers.tracerColorFirst, depth = true)
 
-        if (solutionList.size > 1 && PuzzleSolvers.showTracer) {
-            if (firstSolution.first.leverPos != solutionList[1].first.leverPos) {
-                Renderer.draw3DLine(
-                    listOf(solutionList.first().first.leverPos.addVector(0.5, 0.5, 0.5), solutionList[1].first.leverPos.addVector(0.5, 0.5, 0.5)),
-                    color = PuzzleSolvers.tracerColorSecond, lineWidth = 1.5f, depth = true
-                )
-            }
+        if (solutionList.size > 1 && PuzzleSolvers.showTracer && firstSolution.first.leverPos != solutionList[1].first.leverPos) {
+            Renderer.draw3DLine(
+                listOf(firstSolution.first.leverPos.addVector(.5, .5, .5), solutionList[1].first.leverPos.addVector(.5, .5, .5)),
+                color = PuzzleSolvers.tracerColorSecond, lineWidth = 1.5f, depth = true
+            )
         }
 
-        for (solution in solutions) {
-            var orderText = ""
-            solution.value.drop(solution.key.i).forEach {
-                orderText = if (it == 0.0) orderText.plus("0")
-                else orderText.plus("${if (orderText.isEmpty()) "" else ", "}${sortedSolutions.indexOf(it) + 1}")
-            }
-            if (showOrder)
-                Renderer.drawStringInWorld(orderText, solution.key.leverPos.addVector(.5, .5, .5), Color.WHITE, scale = .035f)
-
-            for (i in solution.key.i until solution.value.size) {
-                val time = solution.value[i]
-                val displayText = if (openedWater == -1L) {
-                    if (time == 0.0) "§a§lCLICK ME!"
-                    else "§e${time}s"
-                } else {
-                    val remainingTime = openedWater + time * 1000L - System.currentTimeMillis()
-                    if (remainingTime > 0) "§e${String.format(Locale.US, "%.2f", remainingTime / 1000)}s"
-                    else "§a§lCLICK ME!"
-                }
-
-                Renderer.drawStringInWorld(displayText, solution.key.leverPos.addVector(0.5, (i - solution.key.i) * 0.5 + 1.5, 0.5), Color.WHITE, scale = 0.04f)
+        solutions.forEach { (lever, times) ->
+            times.drop(lever.i).forEachIndexed { index, time ->
+                Renderer.drawStringInWorld(when {
+                    openedWater == -1L && time == 0.0 -> "§a§lCLICK ME!"
+                    openedWater == -1L -> "§e${time}s"
+                    else -> {
+                        val remainingTime = openedWater + time * 1000L - System.currentTimeMillis()
+                        if (remainingTime > 0) "§e${String.format(Locale.US, "%.2f", remainingTime / 1000)}s" else "§a§lCLICK ME!"
+                    }
+                }, lever.leverPos.addVector(0.5, (index + lever.i) * 0.5 + 1.5, 0.5), Color.WHITE, scale = 0.04f)
             }
         }
     }
@@ -140,8 +118,7 @@ object WaterSolver {
         if (solutions.isEmpty()) return
         LeverBlock.entries.find { it.leverPos.equal(event.position.toVec3()) }?.let {
             it.i++
-            if (it != LeverBlock.WATER || openedWater != -1L) return
-            openedWater = System.currentTimeMillis()
+            if (it == LeverBlock.WATER && openedWater == -1L) openedWater = System.currentTimeMillis()
         }
     }
 
@@ -152,24 +129,24 @@ object WaterSolver {
         LeverBlock.entries.forEach { it.i = 0 }
     }
 
-    private enum class WoolColor(val relativePosition: Vec3) {
-        RED(Vec3(15.0, 56.0, 15.0)),
-        GREEN(Vec3(15.0, 56.0, 16.0)),
-        BLUE(Vec3(15.0, 56.0, 17.0)),
-        ORANGE(Vec3(15.0, 56.0, 18.0)),
-        PURPLE(Vec3(15.0, 56.0, 19.0));
+    private enum class WoolColor(val relativePosition: BlockPos) {
+        PURPLE(BlockPos(15, 56, 19)),
+        ORANGE(BlockPos(15, 56, 18)),
+        BLUE(BlockPos(15, 56, 17)),
+        GREEN(BlockPos(15, 56, 16)),
+        RED(BlockPos(15, 56, 15));
 
         val isExtended: Boolean get() =
-            getBlockAt(DungeonUtils.currentRoom?.getRealCoords(relativePosition)?.toBlockPos() ?: BlockPos(0, 0, 0)) == Blocks.wool
+            getBlockAt(DungeonUtils.currentRoom?.getRealCoords(relativePosition) ?: BlockPos(0, 0, 0)) == Blocks.wool
     }
 
     private enum class LeverBlock(val relativePosition: Vec3, var i: Int = 0) {
-        QUARTZ(Vec3(21.0, 61.0, 20.0)),
-        GOLD(Vec3(21.0, 61.0, 15.0)),
-        COAL(Vec3(21.0, 61.0, 10.0)),
-        DIAMOND(Vec3(9.0, 61.0, 20.0)),
-        EMERALD(Vec3(9.0, 61.0, 15.0)),
-        CLAY(Vec3(9.0, 61.0, 10.0)),
+        QUARTZ(Vec3(20.0, 61.0, 20.0)),
+        GOLD(Vec3(20.0, 61.0, 15.0)),
+        COAL(Vec3(20.0, 61.0, 10.0)),
+        DIAMOND(Vec3(10.0, 61.0, 20.0)),
+        EMERALD(Vec3(10.0, 61.0, 15.0)),
+        CLAY(Vec3(10.0, 61.0, 10.0)),
         WATER(Vec3(15.0, 60.0, 5.0)),
         NONE(Vec3(0.0, 0.0, 0.0));
 

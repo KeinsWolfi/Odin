@@ -28,7 +28,6 @@ object PuzzleSolvers : Module(
 ) {
     private val waterDropDown by DropdownSetting("Water Board")
     private val waterSolver by BooleanSetting("Water Board Solver", false, description = "Shows you the solution to the water puzzle.").withDependency { waterDropDown }
-    val showOrder by BooleanSetting("Show Order", true, description = "Shows the order of the levers to click.").withDependency { waterSolver && waterDropDown }
     val showTracer by BooleanSetting("Show Tracer", true, description = "Shows a tracer to the next lever.").withDependency { waterSolver && waterDropDown }
     val tracerColorFirst by ColorSetting("Tracer Color First", Color.GREEN, true, description = "Color for the first tracer.").withDependency { showTracer && waterDropDown }
     val tracerColorSecond by ColorSetting("Tracer Color Second", Color.ORANGE, true, description = "Color for the second tracer.").withDependency { showTracer && waterDropDown }
@@ -117,6 +116,7 @@ object PuzzleSolvers : Module(
             if ((!inDungeons || inBoss) && !LocationUtils.currentArea.isArea(Island.SinglePlayer)) return@onPacket
             if (waterSolver) waterInteract(it)
             if (boulderSolver) BoulderSolver.playerInteract(it)
+            puzzleTimers()
         }
 
         onMessage(Regex("\\[NPC] (.+): (.+).?"), { enabled && weirdosSolver }) { str ->
@@ -169,5 +169,8 @@ object PuzzleSolvers : Module(
     fun blockUpdateEvent(event: BlockChangeEvent) {
         if ((!inDungeons || inBoss) && !LocationUtils.currentArea.isArea(Island.SinglePlayer)) return
         if (beamsSolver) BeamsSolver.onBlockChange(event)
+    }
+
+    fun puzzleTimers() {
     }
 }

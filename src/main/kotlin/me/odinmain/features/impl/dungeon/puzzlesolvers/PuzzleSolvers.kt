@@ -1,22 +1,29 @@
 package me.odinmain.features.impl.dungeon.puzzlesolvers
 
 import me.odinmain.events.impl.BlockChangeEvent
-import me.odinmain.events.impl.DungeonEvents.RoomEnterEvent
+import me.odinmain.events.impl.RoomEnterEvent
 import me.odinmain.features.Category
 import me.odinmain.features.Module
 import me.odinmain.features.impl.dungeon.puzzlesolvers.WaterSolver.waterInteract
 import me.odinmain.features.settings.Setting.Companion.withDependency
 import me.odinmain.features.settings.impl.*
 import me.odinmain.ui.clickgui.util.ColorUtil.withAlpha
+import me.odinmain.utils.equalsOneOf
 import me.odinmain.utils.profile
 import me.odinmain.utils.render.Color
 import me.odinmain.utils.render.Renderer
 import me.odinmain.utils.skyblock.Island
 import me.odinmain.utils.skyblock.LocationUtils
+import me.odinmain.utils.skyblock.PersonalBest
+import me.odinmain.utils.skyblock.dungeon.DungeonUtils
+import me.odinmain.utils.skyblock.dungeon.DungeonUtils.getRealCoords
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.inBoss
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.inDungeons
+import me.odinmain.utils.skyblock.dungeon.tiles.RoomType
+import net.minecraft.block.BlockChest
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
 import net.minecraft.network.play.server.S08PacketPlayerPosLook
+import net.minecraft.network.play.server.S24PacketBlockAction
 import net.minecraftforge.client.event.RenderWorldLastEvent
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent
 
@@ -95,10 +102,15 @@ object PuzzleSolvers : Module(
 
     private val boulderDropDown by DropdownSetting("Boulder")
     private val boulderSolver by BooleanSetting("Boulder Solver", false, description = "Solver for the boulder puzzle.").withDependency { boulderDropDown }
-    val showAllBoulderClicks by DualSetting("Boulder clicks", "Only First", "All Clicks", true, description = "Shows all the clicks or only the first.").withDependency { boulderDropDown && boulderSolver }
+    val showAllBoulderClicks by BooleanSetting("Show All Boulder Clicks", true, description = "Shows all the clicks or only the first.").withDependency { boulderDropDown && boulderSolver }
     val boulderStyle by SelectorSetting("Boulder Style", Renderer.DEFAULT_STYLE, Renderer.styles, description = Renderer.STYLE_DESCRIPTION).withDependency { boulderDropDown && boulderSolver }
     val boulderColor by ColorSetting("Boulder Color", Color.GREEN.withAlpha(.5f), allowAlpha = true, description = "The color of the box.").withDependency { boulderDropDown && boulderSolver }
     val boulderLineWidth by NumberSetting("Boulder Line Width", 2f, 0.1f, 10f, 0.1f, description = "The width of the box's lines.").withDependency { boulderDropDown && boulderSolver }
+
+    private val puzzleTimers by BooleanSetting("Puzzle Timers", true, description = "Shows the time it took to solve each puzzle.")
+    private val puzzleToIntMap = mapOf("Creeper Beams" to 0, "Lower Blaze" to 1, "Higher Blaze" to 2, "Boulder" to 3, "Ice Fill" to 4, "Quiz" to 5, "Teleport Maze" to 6, "Water Board" to 7, "Three Weirdos" to 8)
+    private val puzzleTimersMap = hashMapOf<String, PuzzleTimer>()
+    private data class PuzzleTimer(val timeEntered: Long = System.currentTimeMillis(), var sentMessage: Boolean = false)
 
     init {
         execute(500) {
@@ -116,7 +128,6 @@ object PuzzleSolvers : Module(
             if ((!inDungeons || inBoss) && !LocationUtils.currentArea.isArea(Island.SinglePlayer)) return@onPacket
             if (waterSolver) waterInteract(it)
             if (boulderSolver) BoulderSolver.playerInteract(it)
-            puzzleTimers()
         }
 
         onMessage(Regex("\\[NPC] (.+): (.+).?"), { enabled && weirdosSolver }) { str ->
@@ -128,15 +139,31 @@ object PuzzleSolvers : Module(
             QuizSolver.onMessage(it)
         }
 
+        onPacket(S24PacketBlockAction::class.java) {
+            if ((!inDungeons || inBoss) && !LocationUtils.currentArea.isArea(Island.SinglePlayer)) return@onPacket
+            if (it.blockType !is BlockChest) return@onPacket
+            val room = DungeonUtils.currentRoom?.takeIf { it.data.type == RoomType.PUZZLE } ?: return@onPacket
+
+            when (room.data.name) {
+                "Three Weirdos" -> it.blockPosition.equalsOneOf(room.getRealCoords(18, 69, 24), room.getRealCoords(16, 69, 25), room.getRealCoords(14, 69, 24))
+                "Ice Fill"      -> it.blockPosition.equalsOneOf(room.getRealCoords(14, 75, 29), room.getRealCoords(16, 75, 29))
+                "Teleport Maze" -> it.blockPosition == room.getRealCoords(15, 70, 20)
+                "Water Board"   -> it.blockPosition == room.getRealCoords(15, 56, 22)
+                "Boulder"       -> it.blockPosition == room.getRealCoords(15, 66, 29)
+                else            -> false
+            }.takeIf { !it } ?: onPuzzleComplete(room.data.name)
+        }
+
         onWorldLoad {
-            WaterSolver.reset()
-            TPMazeSolver.reset()
+            puzzleTimersMap.clear()
             IceFillSolver.reset()
+            WeirdosSolver.reset()
+            BoulderSolver.reset()
+            TPMazeSolver.reset()
+            WaterSolver.reset()
             BlazeSolver.reset()
             BeamsSolver.reset()
-            WeirdosSolver.reset()
             QuizSolver.reset()
-            BoulderSolver.reset()
             TTTSolver.reset()
         }
     }
@@ -145,8 +172,8 @@ object PuzzleSolvers : Module(
     fun onWorldRender(event: RenderWorldLastEvent) {
         if ((!inDungeons || inBoss) && !LocationUtils.currentArea.isArea(Island.SinglePlayer)) return
         profile("Puzzle Solvers Render") {
-            if (waterSolver) WaterSolver.waterRender()
-            if (tpMaze) TPMazeSolver.tpRender()
+            if (waterSolver) WaterSolver.onRenderWorld()
+            if (tpMaze) TPMazeSolver.onRenderWorld()
             if (iceFillSolver) IceFillSolver.onRenderWorld(iceFillColor)
             if (blazeSolver) BlazeSolver.onRenderWorld()
             if (beamsSolver) BeamsSolver.onRenderWorld()
@@ -156,6 +183,8 @@ object PuzzleSolvers : Module(
         }
     }
 
+    private val puzzlePBs = PersonalBest("Puzzles", 9)
+
     @SubscribeEvent
     fun onRoomEnter(event: RoomEnterEvent) {
         IceFillSolver.onRoomEnter(event)
@@ -163,6 +192,8 @@ object PuzzleSolvers : Module(
         QuizSolver.onRoomEnter(event)
         BoulderSolver.onRoomEnter(event)
         TPMazeSolver.onRoomEnter(event)
+        if (!puzzleTimers) return
+        if (event.room?.data?.type == RoomType.PUZZLE && puzzleTimersMap.none { it.key == event.room.data.name }) puzzleTimersMap[event.room.data.name] = PuzzleTimer()
     }
 
     @SubscribeEvent
@@ -171,6 +202,11 @@ object PuzzleSolvers : Module(
         if (beamsSolver) BeamsSolver.onBlockChange(event)
     }
 
-    fun puzzleTimers() {
+    fun onPuzzleComplete(puzzleName: String) {
+        puzzleTimersMap[puzzleName]?.let {
+            if (it.sentMessage) return
+            puzzlePBs.time(puzzleToIntMap[puzzleName] ?: return@let, (System.currentTimeMillis() - it.timeEntered) / 1000.0, "s§7!", "§a${puzzleName} §7solved in §6", addPBString = true, addOldPBString = true, sendOnlyPB = false)
+            it.sentMessage = true
+        }
     }
 }

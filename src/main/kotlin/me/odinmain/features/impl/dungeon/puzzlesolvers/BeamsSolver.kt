@@ -4,15 +4,19 @@ import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import me.odinmain.OdinMain.logger
 import me.odinmain.events.impl.BlockChangeEvent
-import me.odinmain.events.impl.DungeonEvents.RoomEnterEvent
+import me.odinmain.events.impl.RoomEnterEvent
 import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.beamsAlpha
+import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.onPuzzleComplete
 import me.odinmain.ui.clickgui.util.ColorUtil.withAlpha
-import me.odinmain.utils.*
+import me.odinmain.utils.addVec
+import me.odinmain.utils.equalsOneOf
 import me.odinmain.utils.render.Color
 import me.odinmain.utils.render.Renderer
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.getRealCoords
 import me.odinmain.utils.skyblock.getBlockIdAt
+import me.odinmain.utils.toAABB
+import me.odinmain.utils.toVec3
 import net.minecraft.init.Blocks
 import net.minecraft.util.BlockPos
 import java.io.InputStreamReader
@@ -66,7 +70,8 @@ object BeamsSolver {
     }
 
     fun onBlockChange(event: BlockChangeEvent) {
-        if (DungeonUtils.currentRoomName != "Creeper Beams" || currentLanternPairs.isEmpty()) return
+        if (DungeonUtils.currentRoomName != "Creeper Beams") return
+        if (event.pos == DungeonUtils.currentRoom?.getRealCoords(15, 69, 15) && event.old.block == Blocks.air && event.update.block == Blocks.chest) onPuzzleComplete("Creeper Beams")
         currentLanternPairs.forEach { (key, value) ->
             if (event.pos.equalsOneOf(key, value.first) &&
                 event.update.block != Blocks.sea_lantern &&
@@ -79,8 +84,6 @@ object BeamsSolver {
         currentLanternPairs.clear()
     }
 
-    private val colors = listOf(
-        Color.ORANGE, Color.GREEN, Color.PINK, Color.CYAN, Color.YELLOW, Color.DARK_RED, Color.WHITE, Color.PURPLE
-    )
+    private val colors = listOf(Color.ORANGE, Color.GREEN, Color.PINK, Color.CYAN, Color.YELLOW, Color.DARK_RED, Color.WHITE, Color.PURPLE)
 }
 

@@ -1,7 +1,7 @@
 package me.odinmain.features.impl.dungeon.puzzlesolvers
 
 import me.odinmain.OdinMain.mc
-import me.odinmain.events.impl.DungeonEvents
+import me.odinmain.events.impl.RoomEnterEvent
 import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.mazeColorMultiple
 import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.mazeColorOne
 import me.odinmain.features.impl.dungeon.puzzlesolvers.PuzzleSolvers.mazeColorVisited
@@ -11,8 +11,6 @@ import me.odinmain.utils.render.Color
 import me.odinmain.utils.render.Renderer
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.getRealCoords
-import me.odinmain.utils.skyblock.getBlockAt
-import net.minecraft.init.Blocks
 import net.minecraft.network.play.server.S08PacketPlayerPosLook
 import net.minecraft.util.*
 import java.util.concurrent.CopyOnWriteArraySet
@@ -22,11 +20,8 @@ object TPMazeSolver {
     private var correctPortals = listOf<BlockPos>()
     private var visited = CopyOnWriteArraySet<BlockPos>()
 
-    fun onRoomEnter(event: DungeonEvents.RoomEnterEvent) = with(event.room) {
-        if (this?.data?.name != "Teleport Maze") return
-
-        tpPads = BlockPos.getAllInBox(getRealCoords(BlockPos(0, 69, 0)), getRealCoords(BlockPos(30, 69, 30)))
-            .filter { getBlockAt(it) == Blocks.end_portal_frame }.toSet()
+    fun onRoomEnter(event: RoomEnterEvent) = with(event.room) {
+        if (this?.data?.name == "Teleport Maze") tpPads = endPortalFrameLocations.map { getRealCoords(it.x, it.y, it.z) }.toSet()
     }
 
     fun tpPacket(event: S08PacketPlayerPosLook) {
@@ -47,7 +42,7 @@ object TPMazeSolver {
         }
     }
 
-    fun tpRender() {
+    fun onRenderWorld() {
         if (DungeonUtils.currentRoomName != "Teleport Maze") return
         tpPads.forEach {
             when (it) {
@@ -62,4 +57,17 @@ object TPMazeSolver {
         correctPortals = listOf()
         visited = CopyOnWriteArraySet<BlockPos>()
     }
+
+    private val endPortalFrameLocations = setOf(
+        BlockPos(4, 69, 28), BlockPos(4, 69, 22), BlockPos(4, 69, 20),
+        BlockPos(4, 69, 14), BlockPos(4, 69, 12), BlockPos(4, 69, 6),
+        BlockPos(10, 69, 28), BlockPos(10, 69, 22), BlockPos(10, 69, 20),
+        BlockPos(10, 69, 14), BlockPos(10, 69, 12), BlockPos(10, 69, 6),
+        BlockPos(12, 69, 28), BlockPos(12, 69, 22), BlockPos(15, 69, 14),
+        BlockPos(15, 69, 12), BlockPos(18, 69, 28), BlockPos(18, 69, 22),
+        BlockPos(20, 69, 28), BlockPos(20, 69, 22), BlockPos(20, 69, 20),
+        BlockPos(20, 69, 14), BlockPos(20, 69, 12), BlockPos(20, 69, 6),
+        BlockPos(26, 69, 28), BlockPos(26, 69, 22), BlockPos(26, 69, 20),
+        BlockPos(26, 69, 14), BlockPos(26, 69, 12), BlockPos(26, 69, 6)
+    )
 }

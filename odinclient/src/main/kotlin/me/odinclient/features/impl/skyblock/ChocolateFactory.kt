@@ -5,7 +5,8 @@ import me.odinmain.features.Category
 import me.odinmain.features.Module
 import me.odinmain.features.settings.impl.BooleanSetting
 import me.odinmain.features.settings.impl.NumberSetting
-import me.odinmain.utils.*
+import me.odinmain.utils.name
+import me.odinmain.utils.noControlCodes
 import me.odinmain.utils.render.Color
 import me.odinmain.utils.render.Renderer
 import me.odinmain.utils.skyblock.*
@@ -35,21 +36,13 @@ object ChocolateFactory : Module(
 
     private val indexToName = mapOf(28 to "Bro", 29 to "Cousin", 30 to "Sis", 31 to "Daddy", 32 to "Granny", 33 to "Uncle", 34 to "Dog")
     private val possibleLocations = arrayOf(
-        Island.SpiderDen,
-        Island.CrimsonIsle,
-        Island.TheEnd,
-        Island.GoldMine,
-        Island.DeepCaverns,
-        Island.DwarvenMines,
-        Island.CrystalHollows,
-        Island.FarmingIsland,
-        Island.ThePark,
-        Island.DungeonHub,
-        Island.Hub
+        Island.SpiderDen, Island.CrimsonIsle, Island.TheEnd, Island.GoldMine, Island.DeepCaverns, Island.DwarvenMines,
+        Island.CrystalHollows, Island.FarmingIsland, Island.ThePark, Island.DungeonHub, Island.Hub
     )
+    private val eggFoundRegex = Regex(".*(A|found|collected).+Chocolate (Breakfast|Lunch|Dinner|Brunch|Déjeuner|Supper).*")
 
     init {
-        onWorldLoad { currentDetectedEggs = arrayOfNulls(3) }
+        onWorldLoad { currentDetectedEggs.clear() }
         execute(delay = { delay }) {
             if (!isInChocolateFactory()) return@execute
 
@@ -75,17 +68,14 @@ object ChocolateFactory : Module(
         }
 
         execute(delay = { 3000 }) {
-            if (!eggEsp) currentDetectedEggs = arrayOfNulls(3)
-            if (eggEsp && possibleLocations.contains(LocationUtils.currentArea) && currentDetectedEggs.filterNotNull().size < 3) scanForEggs()
+            if (eggEsp && LocationUtils.currentArea in possibleLocations && currentDetectedEggs.size < 6) scanForEggs()
         }
 
-        onMessage(Regex(".*(A|found|collected).+Chocolate (Lunch|Dinner|Breakfast).*")){ it ->
-            if(!eggEsp) return@onMessage
-            val match = Regex(".*(A|found|collected).+Chocolate (Lunch|Dinner|Breakfast).*").find(it) ?: return@onMessage
+        onMessage(eggFoundRegex){ it ->
+            val match = eggFoundRegex.find(it) ?: return@onMessage
             val egg = ChocolateEggs.entries.find { it.type.contains(match.groupValues[2]) } ?: return@onMessage
             when (match.groupValues[1]) {
-                "A" -> currentDetectedEggs[egg.index] = null
-                "found", "collected" -> currentDetectedEggs[egg.index]?.isFound = true
+                "found", "collected" -> currentDetectedEggs.minByOrNull { it.entity.getDistanceToEntity(mc.thePlayer) }?.isFound = true
             }
         }
     }
@@ -118,17 +108,16 @@ object ChocolateFactory : Module(
     }
 
     @SubscribeEvent
-    fun guiLoad(event: GuiEvent.GuiLoadedEvent) {
+    fun guiLoad(event: GuiEvent.Loaded) {
         if (isInChocolateFactory()) findWorker(event.gui)
     }
 
     @SubscribeEvent
     fun onSoundPlay(event: PlaySoundEvent) {
-        if (!cancelSound || event.name != "random.eat" || !isInChocolateFactory()) return
-        event.result = null // This should cancel the sound event
+        if (cancelSound && event.name == "random.eat" && isInChocolateFactory()) event.result = null
     }
 
-    private var currentDetectedEggs = arrayOfNulls<Egg>(3)
+    private var currentDetectedEggs = mutableListOf<Egg>()
 
     private enum class ChocolateEggs(
         val texture: String, val type: String, val color: Color, val index: Int
@@ -144,14 +133,15 @@ object ChocolateFactory : Module(
         mc.theWorld?.loadedEntityList?.forEach { entity ->
             if (entity !is EntityArmorStand) return@forEach
             val eggType = ChocolateEggs.entries.find { it.texture == getSkullValue(entity) } ?: return@forEach
-            currentDetectedEggs[eggType.index] = currentDetectedEggs[eggType.index] ?: Egg(entity, eggType.type, eggType.color)
+            currentDetectedEggs.add(Egg(entity, eggType.type, eggType.color))
         }
     }
 
     @SubscribeEvent
     fun onRenderWorld(event: RenderWorldLastEvent) {
+        if (!eggEsp) return
         currentDetectedEggs.forEach { egg ->
-            if (egg == null || egg.isFound) return@forEach
+            if (egg.isFound) return@forEach
             Renderer.drawCustomBeacon(egg.renderName, Vec3(egg.entity.posX - 0.5, egg.entity.posY + 1.47, egg.entity.posZ - 0.5), egg.color, increase = true, beacon = false)
         }
     }
@@ -161,8 +151,8 @@ object ChocolateFactory : Module(
     }
 
     private data object BunnyEggTextures {
-        const val DINNER_EGG_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTcxMTQ2MjY0OTcwMSwKICAicHJvZmlsZUlkIiA6ICI3NGEwMzQxNWY1OTI0ZTA4YjMyMGM2MmU1NGE3ZjJhYiIsCiAgInByb2ZpbGVOYW1lIiA6ICJNZXp6aXIiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZTVlMzYxNjU4MTlmZDI4NTBmOTg1NTJlZGNkNzYzZmY5ODYzMTMxMTkyODNjMTI2YWNlMGM0Y2M0OTVlNzZhOCIKICAgIH0KICB9Cn0="
+        const val DINNER_EGG_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTcxMTQ2MjY0OTcwMSwKICAicHJvZmlsZUlkIiA6ICI3NGEwMzQxNWY1OTI0ZTA4YjMyMGM2MmU1NGE3ZjJhYiIsCiAgInByb2ZpbGVOYW1lIiA6ICJNZXp6aXIiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZTVlMzYxNjU4MTlmZDI4NTBmOTg1NTJlZGNkNzYzZmY5ODYzMTMxMTkyODNjMTI2YWNlMGM0Y2M0OTVlNzZhOCIKICAgIH0KICB9Cn0"
         const val LUNCH_EGG_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTcxMTQ2MjU2ODExMiwKICAicHJvZmlsZUlkIiA6ICI3NzUwYzFhNTM5M2Q0ZWQ0Yjc2NmQ4ZGUwOWY4MjU0NiIsCiAgInByb2ZpbGVOYW1lIiA6ICJSZWVkcmVsIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzdhZTZkMmQzMWQ4MTY3YmNhZjk1MjkzYjY4YTRhY2Q4NzJkNjZlNzUxZGI1YTM0ZjJjYmM2NzY2YTAzNTZkMGEiCiAgICB9CiAgfQp9"
-        const val BREAKFAST_EGG_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTcxMTQ2MjY3MzE0OSwKICAicHJvZmlsZUlkIiA6ICJiN2I4ZTlhZjEwZGE0NjFmOTY2YTQxM2RmOWJiM2U4OCIsCiAgInByb2ZpbGVOYW1lIiA6ICJBbmFiYW5hbmFZZzciLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTQ5MzMzZDg1YjhhMzE1ZDAzMzZlYjJkZjM3ZDhhNzE0Y2EyNGM1MWI4YzYwNzRmMWI1YjkyN2RlYjUxNmMyNCIKICAgIH0KICB9Cn0="
+        const val BREAKFAST_EGG_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTcxMTQ2MjY3MzE0OSwKICAicHJvZmlsZUlkIiA6ICJiN2I4ZTlhZjEwZGE0NjFmOTY2YTQxM2RmOWJiM2U4OCIsCiAgInByb2ZpbGVOYW1lIiA6ICJBbmFiYW5hbmFZZzciLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTQ5MzMzZDg1YjhhMzE1ZDAzMzZlYjJkZjM3ZDhhNzE0Y2EyNGM1MWI4YzYwNzRmMWI1YjkyN2RlYjUxNmMyNCIKICAgIH0KICB9Cn0"
     }
 }

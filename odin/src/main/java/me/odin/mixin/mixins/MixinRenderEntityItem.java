@@ -18,8 +18,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.nio.FloatBuffer;
 
-import static org.lwjgl.opengl.GL11.*;
-
 @Mixin(RenderEntityItem.class)
 public abstract class MixinRenderEntityItem {
 
@@ -44,8 +42,7 @@ public abstract class MixinRenderEntityItem {
             odinMod$isHighlighting = true;
 
             if (!highlightEntity.getDepth()) {
-                glEnable(GL_POLYGON_OFFSET_FILL);
-                glPolygonOffset(1f, -1000000F);
+                GlStateManager.disableDepth();
             }
 
             GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
@@ -102,8 +99,7 @@ public abstract class MixinRenderEntityItem {
         if (odinMod$isHighlighting) {
             HighlightRenderer.HighlightEntity highlightEntity = odinMod$getHighlightEntity(entity);
             if (highlightEntity != null && !highlightEntity.getDepth()) {
-                glPolygonOffset(1f, 1000000F);
-                glDisable(GL_POLYGON_OFFSET_FILL);
+                GlStateManager.enableDepth();
             }
 
             // Reset OpenGL state

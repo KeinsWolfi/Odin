@@ -1,16 +1,24 @@
 package me.odinmain.utils.skyblock.dungeon
 
-import com.google.gson.*
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonIOException
+import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import me.odinmain.OdinMain.logger
 import me.odinmain.OdinMain.mc
-import me.odinmain.events.impl.DungeonEvents.RoomEnterEvent
-import me.odinmain.utils.*
-import me.odinmain.utils.skyblock.*
+import me.odinmain.events.impl.RoomEnterEvent
+import me.odinmain.utils.Vec2
+import me.odinmain.utils.equalsOneOf
+import me.odinmain.utils.postAndCatch
+import me.odinmain.utils.skyblock.Island
+import me.odinmain.utils.skyblock.LocationUtils
+import me.odinmain.utils.skyblock.devMessage
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.inBoss
 import me.odinmain.utils.skyblock.dungeon.DungeonUtils.inDungeons
 import me.odinmain.utils.skyblock.dungeon.tiles.*
+import me.odinmain.utils.skyblock.getBlockIdAt
 import net.minecraft.block.Block
+import net.minecraft.init.Blocks
 import net.minecraft.util.BlockPos
 import net.minecraft.util.EnumFacing
 import net.minecraftforge.event.world.WorldEvent
@@ -79,14 +87,15 @@ object ScanUtils {
     }
 
     private fun updateRotation(room: Room) {
+        val roomHeight = getTopLayerOfRoom(room.roomComponents.first().vec2)
         if (room.data.name == "Fairy") {
+            room.clayPos = room.roomComponents.firstOrNull()?.let { BlockPos(it.x - 15, roomHeight, it.z - 15) } ?: return
             room.rotation = Rotations.SOUTH
-            room.clayPos = room.roomComponents.firstOrNull()?.let { BlockPos(it.x - 15, getTopLayerOfRoom(it.vec2), it.z - 15) } ?: return
             return
         }
         room.rotation = Rotations.entries.dropLast(1).find { rotation ->
             room.roomComponents.any { component ->
-                BlockPos(component.x + rotation.x, getTopLayerOfRoom(component.vec2), component.z + rotation.z).let { blockPos ->
+                BlockPos(component.x + rotation.x, roomHeight, component.z + rotation.z).let { blockPos ->
                     getBlockIdAt(blockPos) == 159 && (room.roomComponents.size == 1 || EnumFacing.HORIZONTALS.all { facing ->
                         getBlockIdAt(blockPos.add(facing.frontOffsetX, 0, facing.frontOffsetZ)).equalsOneOf(159, 0)
                     }).also { isCorrectClay -> if (isCorrectClay) room.clayPos = blockPos }
@@ -140,8 +149,9 @@ object ScanUtils {
     }
 
     private fun getTopLayerOfRoom(vec2: Vec2): Int {
-        val height = mc.theWorld?.getChunkFromChunkCoords(vec2.x shr 4, vec2.z shr 4)?.getHeightValue(vec2.x and 15, vec2.z and 15) ?: 0
-        return if (isGold(BlockPos(vec2.x, height, vec2.z))) height else height - 1
+        val chunk = mc.theWorld?.getChunkFromChunkCoords(vec2.x shr 4, vec2.z shr 4) ?: return 0
+        val height = chunk.getHeightValue(vec2.x and 15, vec2.z and 15) - 1
+        return if (chunk.getBlock(vec2.x, height, vec2.z) == Blocks.gold_block) height - 1 else height
     }
 
     @SubscribeEvent

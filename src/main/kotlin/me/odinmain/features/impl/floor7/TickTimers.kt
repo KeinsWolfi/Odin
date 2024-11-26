@@ -1,6 +1,6 @@
 package me.odinmain.features.impl.floor7
 
-import me.odinmain.events.impl.RealServerTick
+import me.odinmain.events.impl.ServerTickEvent
 import me.odinmain.features.Category
 import me.odinmain.features.Module
 import me.odinmain.features.settings.Setting.Companion.withDependency
@@ -15,7 +15,7 @@ object TickTimers : Module(
     category = Category.FLOOR7,
     description = "Various tick timers for the floor 7 boss."
 ) {
-    private val displayInTicks: Boolean by DualSetting("Timer Style", "Seconds", "Ticks", default = false, description = "Which Style to display the timers in.")
+    private val displayInTicks by BooleanSetting("Display in Ticks", default = false, description = "Display the timers in ticks instead of seconds.")
     private val symbolDisplay: Boolean by BooleanSetting("Display Symbol", default = true, description = "Displays s or t after the timers.")
     private val showPrefix: Boolean by BooleanSetting("Show Prefix", default = true, description = "Shows the prefix of the timers.")
 
@@ -79,7 +79,7 @@ object TickTimers : Module(
     }
 
     @SubscribeEvent
-    fun onServerTick(event: RealServerTick) {
+    fun onServerTick(event: ServerTickEvent) {
         if (necronTime >= 0 && necronHud.enabled) necronTime--
 
         if (goldorTickTime >= 0 && goldorHud.enabled) goldorTickTime--
